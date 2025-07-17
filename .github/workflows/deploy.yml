@@ -25,16 +25,14 @@ jobs:
       run: |
         if [[ "${{ github.ref_name }}" == "main" ]]; then
           ENV_NAME=prod
-          CLUSTER_NAME=noesis-prod-cluster
-          SERVICE_NAME=noesis-prod-service
+          CLUSTER_NAME=MyFargateServiceStack-prod-ClusterEB0386A7-DcdfBUwDtAwV
         else
           ENV_NAME=dev
-          CLUSTER_NAME=noesis-dev-cluster
-          SERVICE_NAME=noesis-dev-service
+          CLUSTER_NAME=MyFargateServiceStack-dev-ClusterEB0386A7-DcdfBUwDtAwV
         fi
         echo "ENV_NAME=$ENV_NAME" >> $GITHUB_ENV
         echo "CLUSTER_NAME=$CLUSTER_NAME" >> $GITHUB_ENV
-        echo "SERVICE_NAME=$SERVICE_NAME" >> $GITHUB_ENV
+        echo "SERVICE_NAME=Service" >> $GITHUB_ENV
         echo "ROLE_NAME=GitHubOIDCRole-$ENV_NAME" >> $GITHUB_ENV
         echo "ECR_REPO_NAME=my-fargate-app" >> $GITHUB_ENV
 
