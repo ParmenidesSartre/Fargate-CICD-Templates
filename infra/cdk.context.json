@@ -1,0 +1,10 @@
+{
+  "availability-zones:account=555745306296:region=ap-southeast-5": [
+    "ap-southeast-5a",
+    "ap-southeast-5b",
+    "ap-southeast-5c"
+  ],
+  "acknowledged-issue-numbers": [
+    34892
+  ]
+}

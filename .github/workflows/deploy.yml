@@ -1,0 +1,66 @@
+name: Deploy to AWS Fargate
+
+on:
+  push:
+    branches: [ dev, main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      AWS_REGION: ap-southeast-5
+      IMAGE_TAG: ${{ github.sha }}
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v4
+
+    - name: Set environment variables
+      id: env
+      run: |
+        if [[ "${{ github.ref_name }}" == "main" ]]; then
+          echo "ENV_NAME=prod" >> $GITHUB_ENV
+          echo "ECR_REPO_NAME=my-fargate-app-prod" >> $GITHUB_ENV
+          echo "STACK_NAME=MyFargateServiceStackProd" >> $GITHUB_ENV
+        else
+          echo "ENV_NAME=dev" >> $GITHUB_ENV
+          echo "ECR_REPO_NAME=my-fargate-app-dev" >> $GITHUB_ENV
+          echo "STACK_NAME=MyFargateServiceStackDev" >> $GITHUB_ENV
+        fi
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: arn:aws:iam::<your-account-id>:role/<GitHubOIDCRole-${{ env.ENV_NAME }}>
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Build and push Docker image
+      run: |
+        IMAGE_URI=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPO_NAME }}:${{ env.IMAGE_TAG }}
+        docker build -t $IMAGE_URI ./app
+        docker push $IMAGE_URI
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+
+    - name: Install CDK dependencies
+      working-directory: ./infra
+      run: |
+        npm ci
+        npm install -g aws-cdk
+
+    - name: Deploy CDK (${{ env.STACK_NAME }})
+      working-directory: ./infra
+      run: |
+        IMAGE_TAG=${{ env.IMAGE_TAG }} cdk deploy ${{ env.STACK_NAME }} --require-approval never
