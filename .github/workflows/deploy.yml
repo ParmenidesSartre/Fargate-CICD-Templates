@@ -1,11 +1,11 @@
-name: Deploy to AWS Fargate
+name: Fast ECS Deploy (No CDK)
 
 on:
   push:
     branches: [ dev, main ]
 
 jobs:
-  deploy:
+  fast-deploy:
     runs-on: ubuntu-latest
 
     permissions:
@@ -20,18 +20,23 @@ jobs:
     - name: Checkout repo
       uses: actions/checkout@v4
 
-    - name: Set environment variables
+    - name: Set environment
       id: env
       run: |
         if [[ "${{ github.ref_name }}" == "main" ]]; then
           ENV_NAME=prod
+          CLUSTER_NAME=noesis-prod-cluster
+          SERVICE_NAME=noesis-prod-service
         else
           ENV_NAME=dev
+          CLUSTER_NAME=noesis-dev-cluster
+          SERVICE_NAME=noesis-dev-service
         fi
         echo "ENV_NAME=$ENV_NAME" >> $GITHUB_ENV
-        echo "ECR_REPO_NAME=my-fargate-app" >> $GITHUB_ENV
-        echo "STACK_NAME=MyFargateServiceStack-$ENV_NAME" >> $GITHUB_ENV
+        echo "CLUSTER_NAME=$CLUSTER_NAME" >> $GITHUB_ENV
+        echo "SERVICE_NAME=$SERVICE_NAME" >> $GITHUB_ENV
         echo "ROLE_NAME=GitHubOIDCRole-$ENV_NAME" >> $GITHUB_ENV
+        echo "ECR_REPO_NAME=my-fargate-app" >> $GITHUB_ENV
 
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
@@ -49,18 +54,10 @@ jobs:
         docker build -t $IMAGE_URI ./app
         docker push $IMAGE_URI
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: 20
-
-    - name: Install CDK dependencies
-      working-directory: ./infra
+    - name: Force new ECS deployment
       run: |
-        npm ci
-        npm install -g aws-cdk
-
-    - name: Deploy CDK (${{ env.STACK_NAME }})
-      working-directory: ./infra
-      run: |
-        IMAGE_TAG=${{ env.IMAGE_TAG }} ENV_NAME=${{ env.ENV_NAME }} cdk deploy ${{ env.STACK_NAME }} --require-approval never
+        aws ecs update-service \
+          --cluster ${{ env.CLUSTER_NAME }} \
+          --service ${{ env.SERVICE_NAME }} \
+          --force-new-deployment \
+          --region ${{ env.AWS_REGION }}

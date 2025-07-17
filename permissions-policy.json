@@ -1,0 +1,27 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ecr:*",
+        "ecs:*",
+        "cloudformation:*",
+        "logs:*",
+        "ec2:*",
+        "route53:*",
+        "acm:*",
+        "iam:PassRole",
+        "ssm:GetParameter",
+        "ssm:GetParameters",
+        "s3:PutObject",
+        "s3:GetObject",
+        "s3:ListBucket",
+        "sts:AssumeRole"
+      ],
+      "Resource": [
+        "*"
+      ]
+    }
+  ]
+}
