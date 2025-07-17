@@ -69,7 +69,11 @@ jobs:
           --task-definition $FAMILY \
           --query 'taskDefinition' > td.json
 
-        jq '.containerDefinitions[0].image = "${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPO_NAME }}:${{ env.IMAGE_TAG }}"' td.json > td-patched.json
+        jq \
+          --arg IMAGE "${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPO_NAME }}:${{ env.IMAGE_TAG }}" \
+          'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy) 
+           | .containerDefinitions[0].image = $IMAGE' \
+          td.json > td-patched.json
 
         NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
           --cli-input-json file://td-patched.json \
