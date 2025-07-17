@@ -24,19 +24,19 @@ jobs:
       id: env
       run: |
         if [[ "${{ github.ref_name }}" == "main" ]]; then
-          echo "ENV_NAME=prod" >> $GITHUB_ENV
-          echo "ECR_REPO_NAME=my-fargate-app-prod" >> $GITHUB_ENV
-          echo "STACK_NAME=MyFargateServiceStackProd" >> $GITHUB_ENV
+          ENV_NAME=prod
         else
-          echo "ENV_NAME=dev" >> $GITHUB_ENV
-          echo "ECR_REPO_NAME=my-fargate-app-dev" >> $GITHUB_ENV
-          echo "STACK_NAME=MyFargateServiceStackDev" >> $GITHUB_ENV
+          ENV_NAME=dev
         fi
+        echo "ENV_NAME=$ENV_NAME" >> $GITHUB_ENV
+        echo "ECR_REPO_NAME=my-fargate-app" >> $GITHUB_ENV
+        echo "STACK_NAME=MyFargateServiceStack-$ENV_NAME" >> $GITHUB_ENV
+        echo "ROLE_NAME=GitHubOIDCRole-$ENV_NAME" >> $GITHUB_ENV
 
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
-        role-to-assume: arn:aws:iam::<your-account-id>:role/<GitHubOIDCRole-${{ env.ENV_NAME }}>
+        role-to-assume: arn:aws:iam::555745306296:role/${{ env.ROLE_NAME }}
         aws-region: ${{ env.AWS_REGION }}
 
     - name: Login to Amazon ECR
@@ -63,4 +63,4 @@ jobs:
     - name: Deploy CDK (${{ env.STACK_NAME }})
       working-directory: ./infra
       run: |
-        IMAGE_TAG=${{ env.IMAGE_TAG }} cdk deploy ${{ env.STACK_NAME }} --require-approval never
+        IMAGE_TAG=${{ env.IMAGE_TAG }} ENV_NAME=${{ env.ENV_NAME }} cdk deploy ${{ env.STACK_NAME }} --require-approval never
