@@ -24,14 +24,16 @@ export class ServiceStack extends cdk.Stack {
     const domainName = this.node.tryGetContext("domainName");
     const subdomain = "noesis";
     const fullDomain = `${subdomain}.${domainName}`;
-    const imageTag = props.imageTag;
 
-    const repo = ecr.Repository.fromRepositoryName(this, "AppRepo", "my-fargate-app");
     const certificate = acm.Certificate.fromCertificateArn(this, "cert",
       "arn:aws:acm:ap-southeast-5:555745306296:certificate/50f207de-f8e6-42e4-93ca-a728a5033036"
     );
 
-    const cluster = new ecs.Cluster(this, "Cluster", { vpc: props.vpc });
+    const repo = ecr.Repository.fromRepositoryName(this, "AppRepo", "my-fargate-app");
+
+    const cluster = new ecs.Cluster(this, "Cluster", {
+      vpc: props.vpc,
+    });
 
     const fargateService = new ecsPatterns.ApplicationLoadBalancedFargateService(this, "Service", {
       cluster,
@@ -48,14 +50,14 @@ export class ServiceStack extends cdk.Stack {
       taskSubnets: { subnetType: cdk.aws_ec2.SubnetType.PRIVATE_ISOLATED },
       listenerPort: 443,
       taskImageOptions: {
-        image: ecs.ContainerImage.fromEcrRepository(repo, imageTag),
+        image: ecs.ContainerImage.fromEcrRepository(repo, props.imageTag),
         containerPort: 80,
         logDriver: ecs.LogDriver.awsLogs({
           streamPrefix: `${props.envName}`,
           logRetention: logs.RetentionDays.ONE_WEEK,
         }),
         environment: {
-          IMAGE_TAG: imageTag,
+          IMAGE_TAG: props.imageTag,
         },
       },
       healthCheckGracePeriod: cdk.Duration.seconds(60),
