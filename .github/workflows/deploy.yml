@@ -24,15 +24,18 @@ jobs:
       id: env
       run: |
         if [[ "${{ github.ref_name }}" == "main" ]]; then
-          echo "ENV_NAME=prod" >> $GITHUB_ENV
-          echo "CLUSTER_NAME=MyFargateServiceStack-prod-ClusterEB0386A7-DcdfBUwDtAwV" >> $GITHUB_ENV
-          echo "SERVICE_NAME=MyFargateServiceStack-prod-ServiceXXXXXXX-YYYYYYYYYYY" >> $GITHUB_ENV  # Replace with real name
+          ENV_NAME=prod
+          CLUSTER_NAME=MyFargateServiceStack-prod-ClusterEB0386A7-DcdfBUwDtAwV
+          SERVICE_NAME=MyFargateServiceStack-prod-ServiceXXXXXXX-YYYYYYYYYYY   # Replace when known
         else
-          echo "ENV_NAME=dev" >> $GITHUB_ENV
-          echo "CLUSTER_NAME=MyFargateServiceStack-dev-ClusterEB0386A7-DcdfBUwDtAwV" >> $GITHUB_ENV
-          echo "SERVICE_NAME=MyFargateServiceStack-dev-Service9571FDD8-OuEFFFmaMlrT" >> $GITHUB_ENV
+          ENV_NAME=dev
+          CLUSTER_NAME=MyFargateServiceStack-dev-ClusterEB0386A7-DcdfBUwDtAwV
+          SERVICE_NAME=MyFargateServiceStack-dev-Service9571FDD8-OuEFFFmaMlrT
         fi
-        echo "ROLE_NAME=GitHubOIDCRole-${ENV_NAME}" >> $GITHUB_ENV
+        echo "ENV_NAME=$ENV_NAME" >> $GITHUB_ENV
+        echo "CLUSTER_NAME=$CLUSTER_NAME" >> $GITHUB_ENV
+        echo "SERVICE_NAME=$SERVICE_NAME" >> $GITHUB_ENV
+        echo "ROLE_NAME=GitHubOIDCRole-$ENV_NAME" >> $GITHUB_ENV
         echo "ECR_REPO_NAME=my-fargate-app" >> $GITHUB_ENV
 
     - name: Configure AWS credentials
@@ -48,29 +51,81 @@ jobs:
     - name: Build and push Docker image
       run: |
         IMAGE_URI=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPO_NAME }}:${{ env.IMAGE_TAG }}
-        echo "IMAGE_URI=$IMAGE_URI"
+        docker build -t $IMAGE_URI ./app
+        docker push $IMAGE_URI
+
+ name: Fast ECS Deploy (No CDK)
+
+on:
+  push:
+    branches: [ dev, main ]
+
+jobs:
+  fast-deploy:
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      AWS_REGION: ap-southeast-5
+      IMAGE_TAG: ${{ github.sha }}
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v4
+
+    - name: Set environment
+      id: env
+      run: |
+        if [[ "${{ github.ref_name }}" == "main" ]]; then
+          ENV_NAME=prod
+          CLUSTER_NAME=MyFargateServiceStack-prod-ClusterEB0386A7-DcdfBUwDtAwV
+          SERVICE_NAME=MyFargateServiceStack-prod-ServiceXXXXXXX-YYYYYYYYYYY   # Replace when known
+        else
+          ENV_NAME=dev
+          CLUSTER_NAME=MyFargateServiceStack-dev-ClusterEB0386A7-DcdfBUwDtAwV
+          SERVICE_NAME=MyFargateServiceStack-dev-Service9571FDD8-OuEFFFmaMlrT
+        fi
+        echo "ENV_NAME=$ENV_NAME" >> $GITHUB_ENV
+        echo "CLUSTER_NAME=$CLUSTER_NAME" >> $GITHUB_ENV
+        echo "SERVICE_NAME=$SERVICE_NAME" >> $GITHUB_ENV
+        echo "ROLE_NAME=GitHubOIDCRole-$ENV_NAME" >> $GITHUB_ENV
+        echo "ECR_REPO_NAME=my-fargate-app" >> $GITHUB_ENV
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: arn:aws:iam::555745306296:role/${{ env.ROLE_NAME }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Build and push Docker image
+      run: |
+        IMAGE_URI=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPO_NAME }}:${{ env.IMAGE_TAG }}
         docker build -t $IMAGE_URI ./app
         docker push $IMAGE_URI
 
     - name: Register new ECS task definition revision with new image
       id: register-task-def
       run: |
-        TASK_DEF_ARN=$(aws ecs describe-services \
+        FAMILY=$(aws ecs describe-services \
           --cluster ${{ env.CLUSTER_NAME }} \
           --services ${{ env.SERVICE_NAME }} \
           --query "services[0].taskDefinition" \
-          --output text)
+          --output text | awk -F'/' '{print $2}' | awk -F':' '{print $1}')
 
-        TASK_DEF_FAMILY=$(basename $TASK_DEF_ARN | cut -d: -f1)
-        echo "TASK_DEF_FAMILY=$TASK_DEF_FAMILY" >> $GITHUB_ENV
+        echo "TASK_DEF_FAMILY=$FAMILY" >> $GITHUB_ENV
 
         aws ecs describe-task-definition \
-          --task-definition $TASK_DEF_ARN \
+          --task-definition $FAMILY \
           --query 'taskDefinition' > td.json
 
-        jq --arg IMAGE_URI "${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPO_NAME }}:${{ env.IMAGE_TAG }}" \
-          '.containerDefinitions[0].image = $IMAGE_URI | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' \
-          td.json > td-patched.json
+        jq '.containerDefinitions[0].image = "${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPO_NAME }}:${{ env.IMAGE_TAG }}"' td.json > td-patched.json
 
         NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
           --cli-input-json file://td-patched.json \
@@ -86,3 +141,4 @@ jobs:
           --service ${{ env.SERVICE_NAME }} \
           --task-definition ${{ env.NEW_TASK_DEF_ARN }} \
           --region ${{ env.AWS_REGION }}
+
