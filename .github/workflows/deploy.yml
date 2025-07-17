@@ -29,8 +29,8 @@ jobs:
           SERVICE_NAME=MyFargateServiceStack-prod-ServiceXXXXXXX-YYYYYYYYYYY   # Replace when known
         else
           ENV_NAME=dev
-          CLUSTER_NAME=MyFargateServiceStack-dev-ClusterEB0386A7-DcdfBUwDtAwV
-          SERVICE_NAME=MyFargateServiceStack-dev-Service9571FDD8-OuEFFFmaMlrT
+          CLUSTER_NAME=MyFargateServiceStack-dev-ClusterEB0386A7-EY5AkGZjUbXY  # ✅ updated
+          SERVICE_NAME=MyFargateServiceStack-dev-Service9571FDD8-qFhFeXjSxaAS
         fi
         echo "ENV_NAME=$ENV_NAME" >> $GITHUB_ENV
         echo "CLUSTER_NAME=$CLUSTER_NAME" >> $GITHUB_ENV
