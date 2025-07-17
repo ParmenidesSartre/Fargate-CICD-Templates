@@ -24,18 +24,15 @@ jobs:
       id: env
       run: |
         if [[ "${{ github.ref_name }}" == "main" ]]; then
-          ENV_NAME=prod
-          CLUSTER_NAME=MyFargateServiceStack-prod-ClusterEB0386A7-DcdfBUwDtAwV
-          SERVICE_NAME=MyFargateServiceStack-prod-ServiceXXXXXXX-YYYYYYYYYYY   # Replace when known
+          echo "ENV_NAME=prod" >> $GITHUB_ENV
+          echo "CLUSTER_NAME=MyFargateServiceStack-prod-ClusterEB0386A7-DcdfBUwDtAwV" >> $GITHUB_ENV
+          echo "SERVICE_NAME=MyFargateServiceStack-prod-ServiceXXXXXXX-YYYYYYYYYYY" >> $GITHUB_ENV  # Replace with real name
         else
-          ENV_NAME=dev
-          CLUSTER_NAME=MyFargateServiceStack-dev-ClusterEB0386A7-DcdfBUwDtAwV
-          SERVICE_NAME=MyFargateServiceStack-dev-Service9571FDD8-OuEFFFmaMlrT
+          echo "ENV_NAME=dev" >> $GITHUB_ENV
+          echo "CLUSTER_NAME=MyFargateServiceStack-dev-ClusterEB0386A7-DcdfBUwDtAwV" >> $GITHUB_ENV
+          echo "SERVICE_NAME=MyFargateServiceStack-dev-Service9571FDD8-OuEFFFmaMlrT" >> $GITHUB_ENV
         fi
-        echo "ENV_NAME=$ENV_NAME" >> $GITHUB_ENV
-        echo "CLUSTER_NAME=$CLUSTER_NAME" >> $GITHUB_ENV
-        echo "SERVICE_NAME=$SERVICE_NAME" >> $GITHUB_ENV
-        echo "ROLE_NAME=GitHubOIDCRole-$ENV_NAME" >> $GITHUB_ENV
+        echo "ROLE_NAME=GitHubOIDCRole-${ENV_NAME}" >> $GITHUB_ENV
         echo "ECR_REPO_NAME=my-fargate-app" >> $GITHUB_ENV
 
     - name: Configure AWS credentials
@@ -51,13 +48,41 @@ jobs:
     - name: Build and push Docker image
       run: |
         IMAGE_URI=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPO_NAME }}:${{ env.IMAGE_TAG }}
+        echo "IMAGE_URI=$IMAGE_URI"
         docker build -t $IMAGE_URI ./app
         docker push $IMAGE_URI
 
-    - name: Force new ECS deployment
+    - name: Register new ECS task definition revision with new image
+      id: register-task-def
+      run: |
+        TASK_DEF_ARN=$(aws ecs describe-services \
+          --cluster ${{ env.CLUSTER_NAME }} \
+          --services ${{ env.SERVICE_NAME }} \
+          --query "services[0].taskDefinition" \
+          --output text)
+
+        TASK_DEF_FAMILY=$(basename $TASK_DEF_ARN | cut -d: -f1)
+        echo "TASK_DEF_FAMILY=$TASK_DEF_FAMILY" >> $GITHUB_ENV
+
+        aws ecs describe-task-definition \
+          --task-definition $TASK_DEF_ARN \
+          --query 'taskDefinition' > td.json
+
+        jq --arg IMAGE_URI "${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPO_NAME }}:${{ env.IMAGE_TAG }}" \
+          '.containerDefinitions[0].image = $IMAGE_URI | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' \
+          td.json > td-patched.json
+
+        NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+          --cli-input-json file://td-patched.json \
+          --query 'taskDefinition.taskDefinitionArn' \
+          --output text)
+
+        echo "NEW_TASK_DEF_ARN=$NEW_TASK_DEF_ARN" >> $GITHUB_ENV
+
+    - name: Update ECS service to use new task definition
       run: |
         aws ecs update-service \
           --cluster ${{ env.CLUSTER_NAME }} \
           --service ${{ env.SERVICE_NAME }} \
-          --force-new-deployment \
+          --task-definition ${{ env.NEW_TASK_DEF_ARN }} \
           --region ${{ env.AWS_REGION }}
